@@ -1,4 +1,5 @@
 # Download each song in a playlist from youtube and save it to a folder
+from lib2to3.pytree import convert
 import os 
 import sys
 from pytube import Playlist
@@ -36,61 +37,81 @@ def download_videos(video_urls, folder_name):
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
                         
-# # use youtube_dl to convert the videos to mp3
-# def convert_to_mp3(folder_name):
-#     # use youtube_dl to convert the videos to mp3
-#     convert_to_mp3(folder_name)
-#     # get the list of mp3 files in the folder
-#     mp3_files = os.listdir(folder_name)
-#     # use youtube_dl to convert the mp3 files to mp3
-            
-#     for mp3_file in mp3_files:
-#         try:
-#             ydl_opts = {
-#                 'format': 'bestaudio/best',
-#                 'outtmpl': folder_name + '/%(title)s.%(ext)s',
-#                 'postprocessors': [{
-#                     'key': 'FFmpegExtractAudio',
-#                     'preferredcodec': 'mp3',
-#                     'preferredquality': '192',
-#                 }],
-#             }
-#             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-#                 ydl.download([mp3_file])
-#         except Exception as e:
-#             print(e)
+# use youtube_dl to convert the videos to mp3
+def convert_to_mp3(folder_name):
+    # get the list of mp3 files in the folder
+    mp3_files = os.listdir(folder_name)
+    # use youtube_dl to convert the mp3 files to mp3
+    sys.setrecursionlimit(1500)
+    for mp3_file in mp3_files:
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': folder_name + '/%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([mp3_file])
+    
 # main function
 def main():
     # get the playlist url from the user
-    playlist_url = input("Enter the playlist url: ")
+    p = """\t   ########################################################### 
+           ###########################################################
+           ##              YOUTUBE PLAYLIST DOWNLOADER              ##
+           ##                                                       ##
+           ##          Made with Love by Skeeper Loyaltie           ##
+           ##                                                       ##
+           ##                    bugs dont bite                     ##
+           ##                                                       ##
+           ##                      Contribute                       ##
+           ###########################################################
+           ###########################################################
         
-    # determine if the playlist url is a playlist or a single video
-    if playlist_url.find("list=") != -1:
-        video_urls = get_playlist_videos(playlist_url)
+        Menu: 
+         Welcome to Youtube Playlist Downloader
+        1. Download Mp3: 
+        2. Download Mp4: 
+        3. Exit:
         
-        folder_name = input("Enter the folder name: ")
-        # get the list of videos in the playlist
-        # video_urls = get_playlist_videos(playlist_url)
-        # download the videos to a folder 
-        # 
-        download_videos(video_urls, folder_name)
-        print("Download complete")
+    
+        """
+    print(p)
+    choice = int(input("\t Enter an option: "))
+    if choice == 1:
+        playlist_url = input("Enter the playlist url: ")
         
+        # determine if the playlist url is a playlist or a single video
+        if playlist_url.find("list=") != -1:
+            video_urls = get_playlist_videos(playlist_url)
+            folder_name = input("Enter the folder name: ")
+            if not os.path.exists(folder_name):
+                os.makedirs(folder_name)
+                download_videos(video_urls, folder_name)
+            else:
+                print('Directory null.')
+            
+            print("Download complete")
+            
+            # convert the mp4 to mp3
+            # convert_to_mp3(folder_name)       
         
-      
-       
-    elif playlist_url.find("watch?") != -1:
-         # get the folder name from the user
-          # get the folder name from the user
-        folder_name = input("Enter the folder name: ")
-        # download the video to a folder
-        download_songs(playlist_url, folder_name)
-        print("Download complete")
-        
-        
-    else:
-        print("Invalid playlist url")
-        sys.exit()
+        elif playlist_url.find("watch?") != -1:
+            # get the folder name from the user
+            folder_name = input("Enter the folder name: ")
+            # download the video to a folder
+            download_songs(playlist_url, folder_name)
+            print("Download complete")
+            
+            # convert_to_mp3(folder_name)
+            
+            
+        else:
+            print("Invalid playlist url")
+            sys.exit()
         
 if __name__ == "__main__":
     main()
