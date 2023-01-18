@@ -37,7 +37,7 @@ def download_playlist(playlist_url, directory):
     print('All songs in the playlist have been downloaded.')
     return video_list
 
-playlist_url = 'https://www.youtube.com/playlist?list=PLWKjhJtqVAbljtmmeS0c-CEl2LdE-eR_F'
+playlist_url = "https://www.youtube.com/watch?v=OtpqZmrB914&list=RD3Vab3QYwa88&index=1&ab_channel=AirwaveMusicTV"
 directory = input('Enter directory path: ')
 downloaded_videos = download_playlist(playlist_url, directory)
 print(f'The following videos have been downloaded and saved in {directory}:')
