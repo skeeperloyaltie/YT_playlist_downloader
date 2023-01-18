@@ -23,9 +23,10 @@ def download_playlist(playlist_url, directory):
         for entry in playlist['entries']:
             video_url = entry['url']
             video_title = entry['title']
-            video_list.append(f'{video_title}.mp3')
-            if os.path.isfile(f'{video_title}.mp3'):
-                print(f'{video_title}.mp3 already exists, skipping...')
+            video_file = f'{video_title}.mp3'
+            video_list.append(video_file)
+            if os.path.isfile(video_file):
+                print(f'{video_file} already exists, skipping...')
                 continue
             try:
                 ydl.download([video_url])
@@ -44,7 +45,7 @@ def download_playlist(playlist_url, directory):
     print('All songs in the playlist have been downloaded.')
     return video_list
 
-playlist_url = input('Enter youtube playlist link: ')
+playlist_url = 'https://www.youtube.com/playlist?list=PLWKjhJtqVAbljtmmeS0c-CEl2LdE-eR_F'
 directory = input('Enter directory path: ')
 downloaded_videos = download_playlist(playlist_url, directory)
 print(f'The following videos have been downloaded and saved in {directory}:')
