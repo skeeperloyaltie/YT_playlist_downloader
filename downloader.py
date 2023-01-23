@@ -20,7 +20,7 @@ def download_playlist(playlist_url, directory):
         'retries':10,
         'buffer_size':1024*1024,
         'ignoreerrors':True,
-        'max_downloads':1,
+        'max_downloads':100,
         'ratelimit':1024*1024,
     }
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
