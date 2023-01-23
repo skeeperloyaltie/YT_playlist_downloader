@@ -10,20 +10,22 @@ def download_playlist(playlist_url, directory):
     
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': '%(title)s.%(ext)s',
+        'outtmpl': directory + '/%(title)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
     }
+
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         playlist = ydl.extract_info(playlist_url, download=False)
         video_list = []
         for entry in playlist['entries']:
             video_url = entry['url']
             video_title = entry['title']
-            video_file = f'{video_title}.mp3'
+            video_file = f'{directory}/{video_title}.mp3'
+            # video_file = f'{video_title}.mp3'
             video_list.append(video_file)
             if os.path.isfile(video_file):
                 print(f'{video_file} already exists, skipping...')
