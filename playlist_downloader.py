@@ -1,7 +1,7 @@
 import youtube_dl
 import os
 import time
-import argparse
+import sys
 
 def download_playlist(playlist_url, directory):
     # create directory if it doesn't exist
@@ -48,12 +48,16 @@ def download_playlist(playlist_url, directory):
     return video_list
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Download YouTube playlist as MP3 files.')
-    parser.add_argument('url', metavar='url', type=str, help='URL of the playlist')
-    parser.add_argument('directory', metavar='directory', type=str, help='directory to save the downloaded files')
-    args = parser.parse_args()
+download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
 
-    downloaded_videos = download_playlist(args.url, args.directory)
-    print(f'The following videos have been downloaded and saved in {args.directory}:')
-    print(downloaded_videos)
+# if __name__ == '__main__':
+#     if len(sys.argv) != 3:
+#         print("Usage: python playlist_downloader.py <url> <directory>")
+#         sys.exit(1)
+
+#     url = sys.argv[1]
+#     directory = sys.argv[2]
+
+#     downloaded_videos = download_playlist(url, directory)
+#     print(f'The following videos have been downloaded and saved in {directory}:')
+#     print(downloaded_videos)

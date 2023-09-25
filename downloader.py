@@ -1,36 +1,35 @@
-import youtube_dl
-import os
-import time
+from pytube import Playlist
+import os 
 
 def download_playlist(playlist_url, directory):
-    # create directory if it doesn't exist
+    # Create a Playlist object
+    playlist = Playlist(playlist_url)
+
+    # Create the directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+    # Change to the specified directory
     os.chdir(directory)
 
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': '%(title)s.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'noplaylist':False,
-        'retries':10,
-        'buffer_size':1024*1024,
-        'ignoreerrors':True,
-        'max_downloads':100,
-        'ratelimit':1024*1024,
-    }
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        try:
-            ydl.download([playlist_url])
-        except Exception as e:
-            print(f'Error downloading {playlist_url}')
-            print(e)
-    print('All songs in the playlist have been downloaded.')
+    video_list = []
 
-playlist_url = input("Enter playlist URL: ")
-directory = input('Enter directory path: ')
-download_playlist(playlist_url, directory)
+    for video in playlist.videos:
+        try:
+            video.streams.filter(only_audio=True, file_extension='mp4').first().download()
+            video_list.append(video.title)
+        except Exception as e:
+            print(f"Error downloading {video.title}: {str(e)}")
+
+    print('All songs in the playlist have been downloaded.')
+    return video_list
+
+if __name__ == '__main__':
+    playlist_url = input('Enter the URL of the YouTube playlist: ')
+    directory = input('Enter the directory to save the downloaded files: ')
+
+    downloaded_videos = download_playlist(playlist_url, directory)
+
+    print(f'The following videos have been downloaded and saved in {directory}:')
+    for video_title in downloaded_videos:
+        print(video_title)
