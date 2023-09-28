@@ -1,0 +1,4 @@
+pyfiglet
+yt_dlp
+ffmpeg
+
