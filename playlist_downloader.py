@@ -1,4 +1,4 @@
-import youtube_dl
+import yt_dlp as youtube_dl
 import os
 import time
 import sys
@@ -18,9 +18,10 @@ def download_playlist(playlist_url, directory):
             'preferredquality': '192',
         }],
     }
+    print(ydl_opts)
 
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        playlist = ydl.extract_info(playlist_url, download=False)
+        playlist = ydl.extract_info(playlist_url, download=True)
         video_list = []
         for entry in playlist['entries']:
             video_url = entry['url']
