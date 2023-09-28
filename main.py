@@ -2,6 +2,8 @@ import yt_dlp as youtube_dl
 import os
 import time
 import sys
+import pyfiglet 
+
 
 def download_playlist(playlist_url, directory):
     # create directory if it doesn't exist
@@ -18,7 +20,16 @@ def download_playlist(playlist_url, directory):
             'preferredquality': '192',
         }],
     }
-    print(ydl_opts)
+    s = True
+    while s:
+        print("Model set: [Decoding playlist!]")
+        time.sleep(3)
+        print(["This might take a few seconds!"])
+        time.sleep(2)
+        print("Successful!")
+        time.sleep(2)
+        s = False
+
 
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         playlist = ydl.extract_info(playlist_url, download=True)
@@ -56,13 +67,85 @@ def download_playlist(playlist_url, directory):
 # download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print("Usage: python playlist_downloader.py <url> <directory>")
-        sys.exit(1)
+    result = pyfiglet.figlet_format("YOUTUBE PLAYLIST DOWNLOADER") 
 
-    url = sys.argv[1]
-    directory = sys.argv[2]
+    os.system("clear")
+    print(result)
+    os.system('echo  "\\e[1;31m\"')
+    os.system('echo "\\e[1;32m\"')
+    os.system('echo "\\e[1;32m\"')
+    os.system('echo "\\e[1;34m          Created By a Skeeper\\e[0m"')
+    os.system('echo "\\e[2;32m     do not suck on using the application \\e[0m"')
+    os.system('echo "\\e[2;32m            skeeperloyaltie \\e[0m"')
+    os.system('echo "\\e[1;32m   Mail: skeeperloyaltie@pm.me \\e[0m"')
+    print()
 
-    downloaded_videos = download_playlist(url, directory)
-    print(f'The following videos have been downloaded and saved in {directory}:')
-    print(downloaded_videos)
+    # Initialize an empty list to store the links
+    links = []
+
+    # Use a loop to get input from the user until 5 links are entered
+    while len(links) < 5:
+        link = input("Enter a youtube playlist: [Press enter if you done!]  ")
+        
+        # Check if the user pressed Enter without enteing a link
+        if not link:
+            break
+        
+        # Append the link to the list
+        links.append(link)
+
+    # Display the entered links
+    print("Youtube Links entered:")
+    for link in links:
+        print("['" + link + "']")
+    print()
+    
+    # Define the download directory
+    download_directory = os.path.expanduser("~/Music/")
+
+    # Check if the directory exists, and if not, create it
+    if not os.path.exists(download_directory):
+        os.makedirs(download_directory)
+
+    import time
+
+    def perform_network_operation():
+        # Simulate a network operation (replace with your actual code)
+        if len(links) < 1:
+            raise NetworkError("Network issue occurred")
+        else:
+            return "Data from the network"
+
+    class NetworkError(Exception):
+        pass
+
+    max_retries = 5
+    retry_delay = 5  # seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = perform_network_operation()
+            # If the network operation succeeds, exit the loop
+            break
+        except NetworkError as e:
+            print(f"Attempt {attempt}: {str(e)}")
+            if attempt < max_retries:
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print("Max retries reached. Exiting...")
+                break
+    else:
+        print("Task failed after multiple attempts. Exiting...")
+
+    # Continue with the program using 'result' if the operation was successful
+    if result:
+        print("Network operation succeeded. Continuing with the program.")
+        # Your program logic here
+
+
+        for i in links:
+            download_playlist(i, download_directory)
+
+
+    print("Wow - we did it - Thanks for helping")
