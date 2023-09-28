@@ -48,6 +48,10 @@ def download_playlist(playlist_url, directory):
     print('All songs in the playlist have been downloaded.')
     return video_list
 
+# l = ['https://www.youtube.com/watch?v=ALZHF5UqnU4&list=RDEM_2gyprKLdRLT0QaX-7S2lg&start_radio=1&rv=ZAfAud_M_mg', 'https://www.youtube.com/watch?v=ZAfAud_M_mg&list=RDZAfAud_M_mg&start_radio=1&rv=ZAfAud_M_mg&t=0&ab_channel=HalseyVEVO']
+# for i in l:
+#     download_playlist(i, 'music')
+
 
 download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
 

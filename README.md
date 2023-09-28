@@ -14,3 +14,11 @@
     ``` python3 playlist_downlaoder.py ``` 
 
 <p> You will probably encounter so many errors. <br>Reread the README.md </p>
+
+
+
+### [Fix]
+
+```python3 -m pip install --force-reinstall https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz```
+
+- Redo the install
