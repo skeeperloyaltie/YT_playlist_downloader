@@ -11,7 +11,7 @@
 
 ### Running the sys 
 
-    ``` python3 playlist_downlaoder.py ``` 
+    ``` python3 main.py ``` 
 
 <p> You will probably encounter so many errors. <br>Reread the README.md </p>
 
