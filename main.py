@@ -53,16 +53,16 @@ def download_playlist(playlist_url, directory):
 #     download_playlist(i, 'music')
 
 
-download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
+# download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
 
-# if __name__ == '__main__':
-#     if len(sys.argv) != 3:
-#         print("Usage: python playlist_downloader.py <url> <directory>")
-#         sys.exit(1)
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        print("Usage: python playlist_downloader.py <url> <directory>")
+        sys.exit(1)
 
-#     url = sys.argv[1]
-#     directory = sys.argv[2]
+    url = sys.argv[1]
+    directory = sys.argv[2]
 
-#     downloaded_videos = download_playlist(url, directory)
-#     print(f'The following videos have been downloaded and saved in {directory}:')
-#     print(downloaded_videos)
+    downloaded_videos = download_playlist(url, directory)
+    print(f'The following videos have been downloaded and saved in {directory}:')
+    print(downloaded_videos)
