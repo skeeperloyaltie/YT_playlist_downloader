@@ -101,7 +101,7 @@ if __name__ == '__main__':
     print()
     
     # Define the download directory
-    download_directory = os.path.expanduser("~/Music/")
+    download_directory = os.path.expanduser("~/Music/new/new")
 
     # Check if the directory exists, and if not, create it
     if not os.path.exists(download_directory):
