@@ -69,7 +69,7 @@ def download_playlist(playlist_url, directory):
 if __name__ == '__main__':
     result = pyfiglet.figlet_format("YOUTUBE PLAYLIST DOWNLOADER") 
 
-    os.system("clear")
+#    os.system("clear")
     print(result)
     os.system('echo  "\\e[1;31m\"')
     os.system('echo "\\e[1;32m\"')
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     print()
     
     # Define the download directory
-    download_directory = os.path.expanduser("~/Music/new/new")
+    download_directory = os.path.expanduser("~/Music/")
 
     # Check if the directory exists, and if not, create it
     if not os.path.exists(download_directory):
