@@ -21,36 +21,48 @@ def download_playlist(playlist_url, directory):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'noplaylist': False,
+        'noplaylist': False,  # Always process as playlist
         'quiet': False,
         'no_warnings': True,
+        'extract_flat': False,  # Fully extract playlist info
+        'playlist_items': '1-1000',  # Limit to avoid infinite mixes, adjust as needed
     }
 
-    print("Decoding playlist...")
+    print("Analyzing playlist URL...")
     time.sleep(1)
-    print("This might take a few seconds!")
+    print("Extracting playlist contents...")
     time.sleep(1)
 
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            playlist = ydl.extract_info(playlist_url, download=True)
+            # First, get playlist info without downloading
+            info = ydl.extract_info(playlist_url, download=False)
             video_list = []
-            
-            if 'entries' not in playlist:
-                # Handle single video case
-                video_title = playlist['title']
+
+            # Handle different cases
+            if 'entries' not in info:
+                # Single video case
+                video_title = info['title']
                 video_file = f'{video_title}.mp3'
+                if not os.path.isfile(video_file):
+                    ydl.download([playlist_url])
                 video_list.append(video_file)
             else:
-                # Handle playlist case
-                for entry in playlist['entries']:
+                # Playlist/Mix case
+                print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
+                      f"with {len(info['entries'])} songs")
+                
+                for entry in info['entries']:
                     if entry:
-                        video_title = entry['title']
+                        video_title = entry.get('title', 'Unknown Title')
                         video_file = f'{video_title}.mp3'
-                        video_list.append(video_file)
                         if os.path.isfile(video_file):
                             print(f'{video_title}.mp3 already exists, skipping...')
                             continue
+                        video_list.append(video_file)
+                
+                # Download the entire playlist at once
+                ydl.download([playlist_url])
 
             print('All songs in the playlist have been downloaded successfully!')
             return video_list
