@@ -2,150 +2,109 @@ import yt_dlp as youtube_dl
 import os
 import time
 import sys
-import pyfiglet 
+import pyfiglet
 
+class NetworkError(Exception):
+    pass
 
 def download_playlist(playlist_url, directory):
-    # create directory if it doesn't exist
+    # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory)
     os.chdir(directory)
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': directory + '/%(title)s.%(ext)s',
+        'outtmpl': '%(title)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
+        'noplaylist': False,
+        'quiet': False,
+        'no_warnings': True,
     }
-    s = True
-    while s:
-        print("Model set: [Decoding playlist!]")
-        time.sleep(3)
-        print(["This might take a few seconds!"])
-        time.sleep(2)
-        print("Successful!")
-        time.sleep(2)
-        s = False
 
+    print("Decoding playlist...")
+    time.sleep(1)
+    print("This might take a few seconds!")
+    time.sleep(1)
 
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        playlist = ydl.extract_info(playlist_url, download=True)
-        video_list = []
-        for entry in playlist['entries']:
-            video_url = entry['url']
-            video_title = entry['title']
-            video_file = f'{directory}/{video_title}.mp3'
-            video_list.append(video_file)
-            if os.path.isfile(video_file):
-                print(f'{video_file} already exists, skipping...')
-                continue
-            try:
-                ydl.download([video_url])
-                time.sleep(5)
-            except youtube_dl.utils.DownloadError as e:
-                if e.exc_info[1].code == 403:
-                    print(f'HTTP Error 403: Forbidden, retrying in 10 seconds...')
-                    time.sleep(10)
-                    ydl.download([video_url])
-                else:
-                    raise e
-            except Exception as e:
-                print(f'Error downloading {video_url}. Retrying...')
-                time.sleep(10)
-                ydl.download([video_url])
-    print('All songs in the playlist have been downloaded.')
-    return video_list
+    try:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            playlist = ydl.extract_info(playlist_url, download=True)
+            video_list = []
+            
+            if 'entries' not in playlist:
+                # Handle single video case
+                video_title = playlist['title']
+                video_file = f'{video_title}.mp3'
+                video_list.append(video_file)
+            else:
+                # Handle playlist case
+                for entry in playlist['entries']:
+                    if entry:
+                        video_title = entry['title']
+                        video_file = f'{video_title}.mp3'
+                        video_list.append(video_file)
+                        if os.path.isfile(video_file):
+                            print(f'{video_title}.mp3 already exists, skipping...')
+                            continue
 
-# l = ['https://www.youtube.com/watch?v=ALZHF5UqnU4&list=RDEM_2gyprKLdRLT0QaX-7S2lg&start_radio=1&rv=ZAfAud_M_mg', 'https://www.youtube.com/watch?v=ZAfAud_M_mg&list=RDZAfAud_M_mg&start_radio=1&rv=ZAfAud_M_mg&t=0&ab_channel=HalseyVEVO']
-# for i in l:
-#     download_playlist(i, 'music')
+            print('All songs in the playlist have been downloaded successfully!')
+            return video_list
 
-
-# download_playlist('https://www.youtube.com/watch?v=TJjc94NMmkk&list=RDTJjc94NMmkk&start_radio=1&ab_channel=JessieMurphVEVO', 'music')
+    except youtube_dl.utils.DownloadError as e:
+        print(f"Download error: {str(e)}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return []
 
 if __name__ == '__main__':
-    result = pyfiglet.figlet_format("YOUTUBE PLAYLIST DOWNLOADER") 
-
-#    os.system("clear")
+    # Display banner
+    result = pyfiglet.figlet_format("YOUTUBE PLAYLIST DOWNLOADER")
     print(result)
-    os.system('echo  "\\e[1;31m\"')
-    os.system('echo "\\e[1;32m\"')
-    os.system('echo "\\e[1;32m\"')
-    os.system('echo "\\e[1;34m          Created By a Skeeper\\e[0m"')
-    os.system('echo "\\e[2;32m     do not suck on using the application \\e[0m"')
-    os.system('echo "\\e[2;32m            skeeperloyaltie \\e[0m"')
-    os.system('echo "\\e[1;32m   Mail: skeeperloyaltie@pm.me \\e[0m"')
+    print("\033[1;34m          Created By a Skeeper\033[0m")
+    print("\033[2;32m     do not suck on using the application\033[0m")
+    print("\033[2;32m            skeeperloyaltie\033[0m")
+    print("\033[1;32m   Mail: skeeperloyaltie@pm.me\033[0m")
     print()
 
-    # Initialize an empty list to store the links
+    # Get playlist links from user
     links = []
-
-    # Use a loop to get input from the user until 5 links are entered
     while len(links) < 5:
-        link = input("Enter a youtube playlist: [Press enter if you done!]  ")
-        
-        # Check if the user pressed Enter without enteing a link
+        link = input("Enter a YouTube playlist URL (or press Enter to finish): ")
         if not link:
             break
-        
-        # Append the link to the list
         links.append(link)
 
-    # Display the entered links
-    print("Youtube Links entered:")
-    for link in links:
-        print("['" + link + "']")
-    print()
-    
-    # Define the download directory
+    # Display entered links
+    if links:
+        print("\nYouTube Links entered:")
+        for link in links:
+            print(f"['{link}']")
+        print()
+
+    # Set download directory
     download_directory = os.path.expanduser("~/Music/")
 
-    # Check if the directory exists, and if not, create it
-    if not os.path.exists(download_directory):
-        os.makedirs(download_directory)
-
-    import time
-
-    def perform_network_operation():
-        # Simulate a network operation (replace with your actual code)
-        if len(links) < 1:
-            raise NetworkError("Network issue occurred")
-        else:
-            return "Data from the network"
-
-    class NetworkError(Exception):
-        pass
-
-    max_retries = 5
-    retry_delay = 5  # seconds
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            result = perform_network_operation()
-            # If the network operation succeeds, exit the loop
-            break
-        except NetworkError as e:
-            print(f"Attempt {attempt}: {str(e)}")
-            if attempt < max_retries:
-                print(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
+    # Process each playlist
+    if links:
+        for playlist_url in links:
+            print(f"\nProcessing playlist: {playlist_url}")
+            downloaded_files = download_playlist(playlist_url, download_directory)
+            
+            if downloaded_files:
+                print("\nDownloaded files:")
+                for file in downloaded_files:
+                    print(f"- {file}")
             else:
-                print("Max retries reached. Exiting...")
-                break
+                print("Failed to download playlist")
+            
+            time.sleep(2)  # Brief pause between playlists
+
+        print("\nWow - we did it - Thanks for helping!")
     else:
-        print("Task failed after multiple attempts. Exiting...")
-
-    # Continue with the program using 'result' if the operation was successful
-    if result:
-        print("Network operation succeeded. Continuing with the program.")
-        # Your program logic here
-
-
-        for i in links:
-            download_playlist(i, download_directory)
-
-
-    print("Wow - we did it - Thanks for helping")
+        print("No links provided. Exiting...")
