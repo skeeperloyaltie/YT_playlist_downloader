@@ -27,40 +27,49 @@ def download_playlist(playlist_url, directory):
         'extract_flat': False,  # Fully extract playlist info
         'playlist_items': '1-1000',  # Limit to avoid infinite mixes
         'ignoreerrors': True,  # Skip errors for individual videos
+        'retries': 10,  # Retry on transient network issues
+        'fragment_retries': 10,
+        'concurrent_fragments': 4,  # Download multiple fragments in parallel
+        'http_chunk_size': 10485760,  # 10MB chunks for faster downloads
     }
 
     print("Analyzing playlist URL...")
     time.sleep(1)
-    print("Extracting playlist contents...")
+    print("Extracting playlist metadata...")
     time.sleep(1)
 
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            # Get playlist info without downloading
+            # Extract metadata once
             info = ydl.extract_info(playlist_url, download=False)
             video_list = []
+            failed_downloads = []
 
-            # Check if it's a single video or playlist
+            # Handle single video case
             if 'entries' not in info:
                 print("Single video detected, treating as a single-item playlist.")
                 video_title = info.get('title', 'Unknown Title')
+                video_url = info.get('url') or info.get('webpage_url') or playlist_url
                 video_file = f'{video_title}.mp3'
+
                 if os.path.isfile(video_file):
                     print(f'{video_file} already exists, skipping...')
+                    video_list.append(video_file)
                 else:
                     try:
-                        ydl.download([playlist_url])
+                        print(f"Downloading: {video_title}")
+                        ydl.download([video_url])
                         video_list.append(video_file)
                     except youtube_dl.utils.DownloadError as e:
                         if "network" in str(e).lower() or "connection" in str(e).lower():
                             raise NetworkError(f"Network error: {str(e)}")
                         print(f"Error downloading single video '{video_title}': {str(e)}. Skipping...")
+                        failed_downloads.append(video_title)
                 return video_list
 
             # Playlist case
             print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
                   f"with {len(info['entries'])} songs")
-            failed_downloads = []
 
             for entry in info['entries']:
                 if not entry:
@@ -70,6 +79,11 @@ def download_playlist(playlist_url, directory):
                 video_title = entry.get('title', 'Unknown Title')
                 video_url = entry.get('url') or entry.get('webpage_url')
                 video_file = f'{video_title}.mp3'
+
+                if not video_url:
+                    print(f"No valid URL for '{video_title}', skipping...")
+                    failed_downloads.append(video_title)
+                    continue
 
                 if os.path.isfile(video_file):
                     print(f'{video_file} already exists, skipping...')
