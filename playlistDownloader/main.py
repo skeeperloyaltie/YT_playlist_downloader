@@ -25,7 +25,8 @@ def download_playlist(playlist_url, directory):
         'quiet': False,
         'no_warnings': True,
         'extract_flat': False,  # Fully extract playlist info
-        'playlist_items': '1-1000',  # Limit to avoid infinite mixes, adjust as needed
+        'playlist_items': '1-1000',  # Limit to avoid infinite mixes
+        'ignoreerrors': True,  # Skip errors for individual videos
     }
 
     print("Analyzing playlist URL...")
@@ -35,43 +36,71 @@ def download_playlist(playlist_url, directory):
 
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            # First, get playlist info without downloading
+            # Get playlist info without downloading
             info = ydl.extract_info(playlist_url, download=False)
             video_list = []
 
-            # Handle different cases
+            # Check if it's a single video or playlist
             if 'entries' not in info:
-                # Single video case
-                video_title = info['title']
+                print("Single video detected, treating as a single-item playlist.")
+                video_title = info.get('title', 'Unknown Title')
                 video_file = f'{video_title}.mp3'
-                if not os.path.isfile(video_file):
-                    ydl.download([playlist_url])
-                video_list.append(video_file)
-            else:
-                # Playlist/Mix case
-                print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
-                      f"with {len(info['entries'])} songs")
-                
-                for entry in info['entries']:
-                    if entry:
-                        video_title = entry.get('title', 'Unknown Title')
-                        video_file = f'{video_title}.mp3'
-                        if os.path.isfile(video_file):
-                            print(f'{video_title}.mp3 already exists, skipping...')
-                            continue
+                if os.path.isfile(video_file):
+                    print(f'{video_file} already exists, skipping...')
+                else:
+                    try:
+                        ydl.download([playlist_url])
                         video_list.append(video_file)
-                
-                # Download the entire playlist at once
-                ydl.download([playlist_url])
+                    except youtube_dl.utils.DownloadError as e:
+                        if "network" in str(e).lower() or "connection" in str(e).lower():
+                            raise NetworkError(f"Network error: {str(e)}")
+                        print(f"Error downloading single video '{video_title}': {str(e)}. Skipping...")
+                return video_list
 
-            print('All songs in the playlist have been downloaded successfully!')
+            # Playlist case
+            print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
+                  f"with {len(info['entries'])} songs")
+            failed_downloads = []
+
+            for entry in info['entries']:
+                if not entry:
+                    print("Encountered invalid entry in playlist, skipping...")
+                    continue
+
+                video_title = entry.get('title', 'Unknown Title')
+                video_url = entry.get('url') or entry.get('webpage_url')
+                video_file = f'{video_title}.mp3'
+
+                if os.path.isfile(video_file):
+                    print(f'{video_file} already exists, skipping...')
+                    video_list.append(video_file)
+                    continue
+
+                try:
+                    print(f"Downloading: {video_title}")
+                    ydl.download([video_url])
+                    video_list.append(video_file)
+                except youtube_dl.utils.DownloadError as e:
+                    if "network" in str(e).lower() or "connection" in str(e).lower():
+                        raise NetworkError(f"Network error for '{video_title}': {str(e)}")
+                    print(f"Error downloading '{video_title}': {str(e)}. Skipping...")
+                    failed_downloads.append(video_title)
+                except Exception as e:
+                    print(f"Unexpected error for '{video_title}': {str(e)}. Skipping...")
+                    failed_downloads.append(video_title)
+
+            if failed_downloads:
+                print("\nFailed to download the following songs:")
+                for title in failed_downloads:
+                    print(f"- {title}")
+            print(f"\nSuccessfully downloaded {len(video_list)}/{len(info['entries'])} songs!")
             return video_list
 
-    except youtube_dl.utils.DownloadError as e:
-        print(f"Download error: {str(e)}")
+    except NetworkError as e:
+        print(f"Critical network error: {str(e)}. Aborting playlist download.")
         return []
     except Exception as e:
-        print(f"Unexpected error: {str(e)}")
+        print(f"Unexpected error processing playlist: {str(e)}. Aborting playlist download.")
         return []
 
 if __name__ == '__main__':
@@ -113,7 +142,7 @@ if __name__ == '__main__':
                 for file in downloaded_files:
                     print(f"- {file}")
             else:
-                print("Failed to download playlist")
+                print("No files downloaded for this playlist.")
             
             time.sleep(2)  # Brief pause between playlists
 
