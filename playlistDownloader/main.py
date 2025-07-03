@@ -3,15 +3,38 @@ import os
 import time
 import sys
 import pyfiglet
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class NetworkError(Exception):
     pass
 
-def download_playlist(playlist_url, directory):
+def download_single_song(video_url, video_title, directory, ydl_opts):
+    """Download a single song and return its filename or None if failed."""
+    os.chdir(directory)
+    video_file = f'{video_title}.mp3'
+
+    if os.path.isfile(video_file):
+        print(f'{video_file} already exists, skipping...')
+        return video_file
+
+    try:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            print(f"Downloading: {video_title}")
+            ydl.download([video_url])
+        return video_file
+    except youtube_dl.utils.DownloadError as e:
+        if "network" in str(e).lower() or "connection" in str(e).lower():
+            raise NetworkError(f"Network error for '{video_title}': {str(e)}")
+        print(f"Error downloading '{video_title}': {str(e)}. Skipping...")
+        return None
+    except Exception as e:
+        print(f"Unexpected error for '{video_title}': {str(e)}. Skipping...")
+        return None
+
+def download_playlist(playlist_url, directory, max_concurrent=4):
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory)
-    os.chdir(directory)
 
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -25,7 +48,7 @@ def download_playlist(playlist_url, directory):
         'quiet': False,
         'no_warnings': True,
         'extract_flat': False,  # Fully extract playlist info
-        'playlist_items': '1-1000',  # Limit to avoid infinite mixes
+        'playlist_items': '1-3000',  # Support up to 3000 songs
         'ignoreerrors': True,  # Skip errors for individual videos
         'retries': 10,  # Retry on transient network issues
         'fragment_retries': 10,
@@ -50,58 +73,52 @@ def download_playlist(playlist_url, directory):
                 print("Single video detected, treating as a single-item playlist.")
                 video_title = info.get('title', 'Unknown Title')
                 video_url = info.get('url') or info.get('webpage_url') or playlist_url
-                video_file = f'{video_title}.mp3'
-
-                if os.path.isfile(video_file):
-                    print(f'{video_file} already exists, skipping...')
+                video_file = download_single_song(video_url, video_title, directory, ydl_opts)
+                if video_file:
                     video_list.append(video_file)
                 else:
-                    try:
-                        print(f"Downloading: {video_title}")
-                        ydl.download([video_url])
-                        video_list.append(video_file)
-                    except youtube_dl.utils.DownloadError as e:
-                        if "network" in str(e).lower() or "connection" in str(e).lower():
-                            raise NetworkError(f"Network error: {str(e)}")
-                        print(f"Error downloading single video '{video_title}': {str(e)}. Skipping...")
-                        failed_downloads.append(video_title)
+                    failed_downloads.append(video_title)
                 return video_list
 
             # Playlist case
             print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
                   f"with {len(info['entries'])} songs")
 
+            # Prepare tasks for concurrent download
+            download_tasks = []
             for entry in info['entries']:
                 if not entry:
                     print("Encountered invalid entry in playlist, skipping...")
+                    failed_downloads.append("Invalid Entry")
                     continue
 
                 video_title = entry.get('title', 'Unknown Title')
                 video_url = entry.get('url') or entry.get('webpage_url')
-                video_file = f'{video_title}.mp3'
 
                 if not video_url:
                     print(f"No valid URL for '{video_title}', skipping...")
                     failed_downloads.append(video_title)
                     continue
 
-                if os.path.isfile(video_file):
-                    print(f'{video_file} already exists, skipping...')
-                    video_list.append(video_file)
-                    continue
+                download_tasks.append((video_url, video_title))
 
-                try:
-                    print(f"Downloading: {video_title}")
-                    ydl.download([video_url])
-                    video_list.append(video_file)
-                except youtube_dl.utils.DownloadError as e:
-                    if "network" in str(e).lower() or "connection" in str(e).lower():
-                        raise NetworkError(f"Network error for '{video_title}': {str(e)}")
-                    print(f"Error downloading '{video_title}': {str(e)}. Skipping...")
-                    failed_downloads.append(video_title)
-                except Exception as e:
-                    print(f"Unexpected error for '{video_title}': {str(e)}. Skipping...")
-                    failed_downloads.append(video_title)
+            # Download songs concurrently
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                future_to_title = {
+                    executor.submit(download_single_song, url, title, directory, ydl_opts): title
+                    for url, title in download_tasks
+                }
+                for future in as_completed(future_to_title):
+                    title = future_to_title[future]
+                    try:
+                        video_file = future.result()
+                        if video_file:
+                            video_list.append(video_file)
+                    except NetworkError as e:
+                        raise  # Re-raise network errors to abort playlist
+                    except Exception as e:
+                        print(f"Unexpected error for '{title}': {str(e)}. Skipping...")
+                        failed_downloads.append(title)
 
             if failed_downloads:
                 print("\nFailed to download the following songs:")
@@ -149,7 +166,7 @@ if __name__ == '__main__':
     if links:
         for playlist_url in links:
             print(f"\nProcessing playlist: {playlist_url}")
-            downloaded_files = download_playlist(playlist_url, download_directory)
+            downloaded_files = download_playlist(playlist_url, download_directory, max_concurrent=4)
             
             if downloaded_files:
                 print("\nDownloaded files:")
