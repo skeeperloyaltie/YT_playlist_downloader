@@ -8,10 +8,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class NetworkError(Exception):
     pass
 
-def download_single_song(video_url, video_title, directory, ydl_opts):
-    """Download a single song and return its filename or None if failed."""
+def download_single_item(video_url, video_title, directory, ydl_opts, file_format):
+    """Download a single item (audio or video) and return its filename or None if failed."""
     os.chdir(directory)
-    video_file = f'{video_title}.mp3'
+    file_ext = 'mp3' if file_format == 'audio' else 'mp4'
+    video_file = f'{video_title}.{file_ext}'
 
     if os.path.isfile(video_file):
         print(f'{video_file} already exists, skipping...')
@@ -19,7 +20,7 @@ def download_single_song(video_url, video_title, directory, ydl_opts):
 
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            print(f"Downloading: {video_title}")
+            print(f"Downloading: {video_title} as {file_ext.upper()}")
             ydl.download([video_url])
         return video_file
     except youtube_dl.utils.DownloadError as e:
@@ -31,30 +32,44 @@ def download_single_song(video_url, video_title, directory, ydl_opts):
         print(f"Unexpected error for '{video_title}': {str(e)}. Skipping...")
         return None
 
-def download_playlist(playlist_url, directory, max_concurrent=4):
+def download_playlist(playlist_url, directory, file_format='audio', max_concurrent=4):
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+    # Configure yt-dlp options based on format
     ydl_opts = {
-        'format': 'bestaudio/best',
         'outtmpl': '%(title)s.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
         'noplaylist': False,  # Always process as playlist
         'quiet': False,
         'no_warnings': True,
         'extract_flat': False,  # Fully extract playlist info
-        'playlist_items': '1-3000',  # Support up to 3000 songs
+        'playlist_items': '1-3000',  # Support up to 3000 items
         'ignoreerrors': True,  # Skip errors for individual videos
         'retries': 10,  # Retry on transient network issues
         'fragment_retries': 10,
         'concurrent_fragments': 4,  # Download multiple fragments in parallel
         'http_chunk_size': 10485760,  # 10MB chunks for faster downloads
     }
+
+    if file_format == 'audio':
+        ydl_opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        })
+    else:  # video
+        ydl_opts.update({
+            'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',  # Prioritize 1080p MP4
+            'merge_output_format': 'mp4',  # Ensure output is MP4
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',  # Ensure video is in MP4 format
+            }],
+        })
 
     print("Analyzing playlist URL...")
     time.sleep(1)
@@ -70,10 +85,10 @@ def download_playlist(playlist_url, directory, max_concurrent=4):
 
             # Handle single video case
             if 'entries' not in info:
-                print("Single video detected, treating as a single-item playlist.")
+                print(f"Single {'video' if file_format == 'video' else 'audio'} detected, treating as a single-item playlist.")
                 video_title = info.get('title', 'Unknown Title')
                 video_url = info.get('url') or info.get('webpage_url') or playlist_url
-                video_file = download_single_song(video_url, video_title, directory, ydl_opts)
+                video_file = download_single_item(video_url, video_title, directory, ydl_opts, file_format)
                 if video_file:
                     video_list.append(video_file)
                 else:
@@ -82,7 +97,7 @@ def download_playlist(playlist_url, directory, max_concurrent=4):
 
             # Playlist case
             print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
-                  f"with {len(info['entries'])} songs")
+                  f"with {len(info['entries'])} items")
 
             # Prepare tasks for concurrent download
             download_tasks = []
@@ -102,10 +117,10 @@ def download_playlist(playlist_url, directory, max_concurrent=4):
 
                 download_tasks.append((video_url, video_title))
 
-            # Download songs concurrently
+            # Download items concurrently
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                 future_to_title = {
-                    executor.submit(download_single_song, url, title, directory, ydl_opts): title
+                    executor.submit(download_single_item, url, title, directory, ydl_opts, file_format): title
                     for url, title in download_tasks
                 }
                 for future in as_completed(future_to_title):
@@ -121,10 +136,10 @@ def download_playlist(playlist_url, directory, max_concurrent=4):
                         failed_downloads.append(title)
 
             if failed_downloads:
-                print("\nFailed to download the following songs:")
+                print("\nFailed to download the following items:")
                 for title in failed_downloads:
                     print(f"- {title}")
-            print(f"\nSuccessfully downloaded {len(video_list)}/{len(info['entries'])} songs!")
+            print(f"\nSuccessfully downloaded {len(video_list)}/{len(info['entries'])} items!")
             return video_list
 
     except NetworkError as e:
@@ -144,6 +159,14 @@ if __name__ == '__main__':
     print("\033[1;32m   Mail: skeeperloyaltie@pm.me\033[0m")
     print()
 
+    # Get download format from user
+    while True:
+        file_format = input("Enter download format (audio/mp3 or video/mp4): ").lower()
+        if file_format in ['audio', 'mp3', 'video', 'mp4']:
+            file_format = 'audio' if file_format in ['audio', 'mp3'] else 'video'
+            break
+        print("Invalid input. Please enter 'audio', 'mp3', 'video', or 'mp4'.")
+
     # Get playlist links from user
     links = []
     while len(links) < 5:
@@ -160,13 +183,13 @@ if __name__ == '__main__':
         print()
 
     # Set download directory
-    download_directory = os.path.expanduser("~/Music/")
+    download_directory = os.path.expanduser("~/Music/") if file_format == 'audio' else os.path.expanduser("~/Videos/")
 
     # Process each playlist
     if links:
         for playlist_url in links:
             print(f"\nProcessing playlist: {playlist_url}")
-            downloaded_files = download_playlist(playlist_url, download_directory, max_concurrent=4)
+            downloaded_files = download_playlist(playlist_url, download_directory, file_format, max_concurrent=4)
             
             if downloaded_files:
                 print("\nDownloaded files:")
