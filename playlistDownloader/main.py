@@ -3,6 +3,7 @@ import os
 import time
 import sys
 import pyfiglet
+import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class NetworkError(Exception):
@@ -12,12 +13,47 @@ class SilentLogger:
     """Custom logger to suppress verbose yt-dlp output."""
     def debug(self, msg):
         pass
-
     def warning(self, msg):
         pass
-
     def error(self, msg):
         pass
+
+def check_permissions(directory):
+    """Check if the directory exists and is writable."""
+    if not os.path.exists(directory):
+        try:
+            os.makedirs(directory)
+        except Exception as e:
+            return False, f"Cannot create directory {directory}: {str(e)}"
+    
+    if not os.access(directory, os.W_OK):
+        return False, f"No write permission for {directory}"
+    
+    return True, None
+
+def get_default_directory(file_format):
+    """Determine the default download directory based on platform and file format."""
+    system = platform.system().lower()
+    is_termux = os.path.exists(os.path.expanduser("~/storage/shared"))
+
+    if is_termux:
+        base_dir = os.path.expanduser("~/storage/shared")
+        if file_format == 'audio':
+            return os.path.join(base_dir, "Music")
+        return os.path.join(base_dir, "Videos")
+    elif system == "linux":
+        if file_format == 'audio':
+            return os.path.expanduser("~/Music")
+        return os.path.expanduser("~/Videos")
+    elif system == "windows":
+        if file_format == 'audio':
+            return os.path.expanduser(os.path.join("~", "Music"))
+        return os.path.expanduser(os.path.join("~", "Videos"))
+    else:
+        # Fallback to current directory
+        if file_format == 'audio':
+            return os.path.join(os.getcwd(), "Music")
+        return os.path.join(os.getcwd(), "Videos")
 
 def download_single_item(video_url, video_title, directory, ydl_opts, file_format):
     """Download a single item (audio or video) and return its filename or None if failed."""
@@ -33,7 +69,6 @@ def download_single_item(video_url, video_title, directory, ydl_opts, file_forma
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             print(f"Downloading: {video_title} as {file_ext.upper()}...")
             ydl.download([video_url])
-            # Verify file exists and is non-zero
             file_path = os.path.join(directory, video_file)
             if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
                 print(f"Completed: {video_file}")
@@ -51,15 +86,21 @@ def download_single_item(video_url, video_title, directory, ydl_opts, file_forma
         return None
 
 def download_playlist(playlist_url, directory, file_format='audio', max_concurrent=4):
-    # Create directory if it doesn't exist
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    # Check directory permissions
+    has_permission, error_msg = check_permissions(directory)
+    if not has_permission:
+        print(f"Error: {error_msg}")
+        if "termux" in platform.system().lower() or os.path.exists(os.path.expanduser("~/storage")):
+            print("Please run 'termux-setup-storage' to grant storage access.")
+        else:
+            print("Please ensure the directory is writable or choose a different location.")
+        return [], []
 
-    # Configure yt-dlp options based on format
+    # Configure yt-dlp options
     ydl_opts = {
         'outtmpl': '%(title)s.%(ext)s',
         'noplaylist': False,
-        'quiet': True,  # Suppress verbose output
+        'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
         'playlist_items': '1-3000',
@@ -68,7 +109,7 @@ def download_playlist(playlist_url, directory, file_format='audio', max_concurre
         'fragment_retries': 10,
         'concurrent_fragments': 4,
         'http_chunk_size': 10485760,
-        'logger': SilentLogger(),  # Use custom logger
+        'logger': SilentLogger(),
     }
 
     if file_format == 'audio':
@@ -178,13 +219,6 @@ if __name__ == '__main__':
     print("\033[1;32m   Mail: skeeperloyaltie@pm.me\033[0m")
     print()
 
-    # Check Termux storage setup
-    termux_storage = os.path.expanduser("~/storage/shared")
-    if not os.path.exists(termux_storage):
-        print("Termux storage not found. Please run 'termux-setup-storage' to grant access.")
-        print("Exiting...")
-        sys.exit(1)
-
     # Get download format from user
     while True:
         file_format = input("Enter download format (audio/mp3 or video/mp4): ").lower()
@@ -193,8 +227,18 @@ if __name__ == '__main__':
             break
         print("Invalid input. Please enter 'audio', 'mp3', 'video', or 'mp4'.")
 
-    # Set download directory for Termux
-    download_directory = os.path.expanduser("~/storage/shared/Music") if file_format == 'audio' else os.path.expanduser("~/storage/shared/Videos")
+    # Set download directory based on platform
+    download_directory = get_default_directory(file_format)
+
+    # Check permissions for the download directory
+    has_permission, error_msg = check_permissions(download_directory)
+    if not has_permission:
+        print(f"Error: {error_msg}")
+        if os.path.exists(os.path.expanduser("~/storage")):
+            print("Please run 'termux-setup-storage' to grant storage access.")
+        else:
+            print("Please ensure the directory is writable or choose a different location.")
+        sys.exit(1)
 
     # Get playlist links from user
     links = []
