@@ -1,82 +1,73 @@
-import yt_dlp as youtube_dl
+import yt_dlp
 import os
 import time
 import sys
 import pyfiglet
 import platform
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class NetworkError(Exception):
     pass
 
 class SilentLogger:
-    """Custom logger to suppress verbose yt-dlp output."""
     def debug(self, msg):
         pass
     def warning(self, msg):
         pass
     def error(self, msg):
-        pass
+        print(f"yt-dlp error: {msg}")
+
+def check_ffmpeg():
+    if not shutil.which('ffmpeg'):
+        print("Error: ffmpeg is not installed or not found in PATH. Please install ffmpeg.")
+        sys.exit(1)
 
 def check_permissions(directory):
-    """Check if the directory exists and is writable."""
     if not os.path.exists(directory):
         try:
             os.makedirs(directory)
         except Exception as e:
             return False, f"Cannot create directory {directory}: {str(e)}"
-    
     if not os.access(directory, os.W_OK):
         return False, f"No write permission for {directory}"
-    
     return True, None
 
 def get_default_directory(file_format):
-    """Determine the default download directory based on platform and file format."""
     system = platform.system().lower()
     is_termux = os.path.exists(os.path.expanduser("~/storage/shared"))
-
     if is_termux:
         base_dir = os.path.expanduser("~/storage/shared")
-        if file_format == 'audio':
-            return os.path.join(base_dir, "Music")
-        return os.path.join(base_dir, "Videos")
+        return os.path.join(base_dir, "Music" if file_format == 'audio' else "Videos")
     elif system == "linux":
-        if file_format == 'audio':
-            return os.path.expanduser("~/Music")
-        return os.path.expanduser("~/Videos")
+        return os.path.expanduser("~/Music" if file_format == 'audio' else "~/Videos")
     elif system == "windows":
-        if file_format == 'audio':
-            return os.path.expanduser(os.path.join("~", "Music"))
-        return os.path.expanduser(os.path.join("~", "Videos"))
+        return os.path.expanduser(os.path.join("~", "Music" if file_format == 'audio' else "Videos"))
     else:
-        # Fallback to current directory
-        if file_format == 'audio':
-            return os.path.join(os.getcwd(), "Music")
-        return os.path.join(os.getcwd(), "Videos")
+        return os.path.join(os.getcwd(), "Music" if file_format == 'audio' else "Videos")
 
 def download_single_item(video_url, video_title, directory, ydl_opts, file_format):
-    """Download a single item (audio or video) and return its filename or None if failed."""
-    os.chdir(directory)
-    file_ext = 'mp3' if file_format == 'audio' else 'mp4'
-    video_file = f'{video_title}.{file_ext}'
-
-    if os.path.isfile(video_file):
-        print(f'{video_file} already exists, skipping...')
-        return video_file
+    try:
+        with yt_dlp.YoutubeDL({**ydl_opts, 'simulate': True}) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            expected_filename = ydl.prepare_filename(info)
+            if os.path.isfile(expected_filename):
+                print(f'{expected_filename} already exists, skipping...')
+                return expected_filename
+    except Exception as e:
+        print(f"Error checking file existence for {video_title}: {str(e)}")
 
     try:
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            print(f"Downloading: {video_title} as {file_ext.upper()}...")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            print(f"Downloading: {video_title} as {file_format.upper()}...")
             ydl.download([video_url])
-            file_path = os.path.join(directory, video_file)
-            if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
-                print(f"Completed: {video_file}")
-                return video_file
+            if os.path.isfile(expected_filename) and os.path.getsize(expected_filename) > 0:
+                print(f"Completed: {expected_filename}")
+                return expected_filename
             else:
                 print(f"Failed: {video_title} (file missing or empty)")
                 return None
-    except youtube_dl.utils.DownloadError as e:
+    except yt_dlp.utils.DownloadError as e:
         if "network" in str(e).lower() or "connection" in str(e).lower():
             raise NetworkError(f"Network error for '{video_title}': {str(e)}")
         print(f"Failed: {video_title} ({str(e)})")
@@ -85,23 +76,19 @@ def download_single_item(video_url, video_title, directory, ydl_opts, file_forma
         print(f"Failed: {video_title} (Unexpected error: {str(e)})")
         return None
 
-def download_playlist(playlist_url, directory, file_format='audio', max_concurrent=4):
-    # Check directory permissions
+def download_playlist(playlist_url, directory, file_format='audio', max_concurrent=2):
     has_permission, error_msg = check_permissions(directory)
     if not has_permission:
         print(f"Error: {error_msg}")
-        if "termux" in platform.system().lower() or os.path.exists(os.path.expanduser("~/storage")):
+        if os.path.exists(os.path.expanduser("~/storage")):
             print("Please run 'termux-setup-storage' to grant storage access.")
         else:
             print("Please ensure the directory is writable or choose a different location.")
         return [], []
 
-    # Configure yt-dlp options
     ydl_opts = {
-        'outtmpl': '%(title)s.%(ext)s',
+        'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
         'noplaylist': False,
-        'quiet': True,
-        'no_warnings': True,
         'extract_flat': False,
         'playlist_items': '1-3000',
         'ignoreerrors': True,
@@ -121,13 +108,13 @@ def download_playlist(playlist_url, directory, file_format='audio', max_concurre
                 'preferredquality': '192',
             }],
         })
-    else:  # video
+    else:
         ydl_opts.update({
-            'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'merge_output_format': 'mp4',
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
+                'preferredformat': 'mp4',
             }],
         })
 
@@ -137,12 +124,11 @@ def download_playlist(playlist_url, directory, file_format='audio', max_concurre
     time.sleep(1)
 
     try:
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(playlist_url, download=False)
             video_list = []
             failed_downloads = []
 
-            # Handle single video case
             if 'entries' not in info:
                 print(f"Single {'video' if file_format == 'video' else 'audio'} detected.")
                 video_title = info.get('title', 'Unknown Title')
@@ -154,29 +140,23 @@ def download_playlist(playlist_url, directory, file_format='audio', max_concurre
                     failed_downloads.append(video_title)
                 return video_list, failed_downloads
 
-            # Playlist case
             print(f"Found playlist: {info.get('title', 'Unknown Playlist')} "
                   f"with {len(info['entries'])} items")
 
-            # Prepare tasks for concurrent download
             download_tasks = []
             for entry in info['entries']:
                 if not entry:
                     print("Invalid entry in playlist, skipping...")
                     failed_downloads.append("Invalid Entry")
                     continue
-
                 video_title = entry.get('title', 'Unknown Title')
                 video_url = entry.get('url') or entry.get('webpage_url')
-
                 if not video_url:
                     print(f"No valid URL for '{video_title}', skipping...")
                     failed_downloads.append(video_title)
                     continue
-
                 download_tasks.append((video_url, video_title))
 
-            # Download items concurrently with progress
             total_tasks = len(download_tasks)
             print(f"Starting download of {total_tasks} items...")
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
@@ -210,7 +190,7 @@ def download_playlist(playlist_url, directory, file_format='audio', max_concurre
         return [], failed_downloads
 
 if __name__ == '__main__':
-    # Display banner
+    check_ffmpeg()
     result = pyfiglet.figlet_format("YOUTUBE PLAYLIST DOWNLOADER")
     print(result)
     print("\033[1;34m          Created By a Skeeper\033[0m")
@@ -219,7 +199,6 @@ if __name__ == '__main__':
     print("\033[1;32m   Mail: skeeperloyaltie@pm.me\033[0m")
     print()
 
-    # Get download format from user
     while True:
         file_format = input("Enter download format (audio/mp3 or video/mp4): ").lower()
         if file_format in ['audio', 'mp3', 'video', 'mp4']:
@@ -227,20 +206,22 @@ if __name__ == '__main__':
             break
         print("Invalid input. Please enter 'audio', 'mp3', 'video', or 'mp4'.")
 
-    # Set download directory based on platform
     download_directory = get_default_directory(file_format)
+    print(f"Default download directory: {download_directory}")
+    custom_dir = input("Enter custom directory (or press Enter to use default): ")
+    if custom_dir:
+        download_directory = custom_dir
 
-    # Check permissions for the download directory
     has_permission, error_msg = check_permissions(download_directory)
     if not has_permission:
         print(f"Error: {error_msg}")
         if os.path.exists(os.path.expanduser("~/storage")):
-            print("Please run 'termux-setup-storage' to grant storage access.")
+            print("Termux detected. Ensure 'termux-setup-storage' has been run and storage permissions are granted.")
+            input("Press Enter to continue or Ctrl+C to abort...")
         else:
             print("Please ensure the directory is writable or choose a different location.")
         sys.exit(1)
 
-    # Get playlist links from user
     links = []
     while len(links) < 5:
         link = input("Enter a YouTube playlist URL (or press Enter to finish): ")
@@ -248,18 +229,16 @@ if __name__ == '__main__':
             break
         links.append(link)
 
-    # Display entered links
     if links:
         print("\nYouTube Links entered:")
         for link in links:
             print(f"['{link}']")
         print()
 
-    # Process each playlist
     if links:
         for playlist_url in links:
             print(f"\nProcessing playlist: {playlist_url}")
-            downloaded_files, failed_downloads = download_playlist(playlist_url, download_directory, file_format, max_concurrent=4)
+            downloaded_files, failed_downloads = download_playlist(playlist_url, download_directory, file_format, max_concurrent=2)
 
             if downloaded_files:
                 print("\nDownloaded files:")
@@ -273,7 +252,7 @@ if __name__ == '__main__':
                 for title in failed_downloads:
                     print(f"- {title}")
 
-            time.sleep(2)  # Brief pause between playlists
+            time.sleep(2)
 
         print("\nWow - we did it - Thanks for helping!")
     else:
