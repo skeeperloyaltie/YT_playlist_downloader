@@ -1,4 +1,2 @@
 pyfiglet
-yt_dlp
-ffmpeg
-
+yt-dlp
