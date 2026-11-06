@@ -5,6 +5,7 @@ import re
 import shutil
 import urllib.parse
 import argparse
+import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
@@ -29,6 +30,135 @@ def sanitize_filename(name):
     sanitized = re.sub(r'[\x00-\x1f\x7f]', '', sanitized)
     sanitized = sanitized.strip('. ')
     return sanitized or "Unknown_Title"
+
+def detect_environment():
+    """
+    Detects platform, architecture, and environment:
+    - Android / Termux
+    - Windows
+    - macOS
+    - Linux
+    """
+    is_termux = bool(
+        os.environ.get("TERMUX_VERSION")
+        or "com.termux" in os.environ.get("PREFIX", "")
+        or os.path.exists("/data/data/com.termux")
+    )
+    is_android = (
+        is_termux
+        or bool(os.environ.get("ANDROID_ROOT"))
+        or bool(os.environ.get("ANDROID_DATA"))
+        or hasattr(sys, "getandroidapilevel")
+        or os.path.exists("/system/build.prop")
+    )
+
+    sys_name = platform.system()
+    arch = platform.machine() or "unknown"
+
+    if is_termux:
+        desc = f"Android / Termux ({arch})"
+    elif is_android:
+        desc = f"Android ({arch})"
+    elif sys_name == "Windows":
+        desc = f"Windows ({arch})"
+    elif sys_name == "Darwin":
+        desc = f"macOS ({arch})"
+    else:
+        desc = f"Linux ({arch})"
+
+    return {
+        'system': sys_name,
+        'machine': arch,
+        'is_android': is_android,
+        'is_termux': is_termux,
+        'description': desc
+    }
+
+def get_default_download_directory():
+    """
+    Dynamically determines the appropriate default download directory based on OS and architecture:
+    - On Android / Termux: targets shared public device storage (/storage/shared/Music,
+      ~/storage/shared/Music, ~/storage/music, /storage/emulated/0/Music, /sdcard/Music).
+    - On Windows, macOS, Linux: defaults to user's ~/Music/ directory.
+    """
+    env = detect_environment()
+
+    if env['is_android']:
+        # Termux & Android shared storage paths in priority order
+        candidates = [
+            os.path.expanduser("~/storage/shared/Music"),
+            os.path.expanduser("~/storage/music"),
+            "/storage/shared/Music",
+            "/storage/emulated/0/Music",
+            "/sdcard/Music",
+        ]
+
+        # Return first existing directory
+        for path in candidates:
+            if os.path.isdir(path):
+                return path
+
+        # If ~/storage/shared exists (created by termux-setup-storage), create Music under it
+        shared_root = os.path.expanduser("~/storage/shared")
+        if os.path.isdir(shared_root):
+            music_dir = os.path.join(shared_root, "Music")
+            try:
+                os.makedirs(music_dir, exist_ok=True)
+                return music_dir
+            except Exception:
+                pass
+
+        # If /storage/shared exists
+        if os.path.isdir("/storage/shared"):
+            music_dir = "/storage/shared/Music"
+            try:
+                os.makedirs(music_dir, exist_ok=True)
+                return music_dir
+            except Exception:
+                pass
+
+        # If /storage/emulated/0 exists
+        if os.path.isdir("/storage/emulated/0"):
+            music_dir = "/storage/emulated/0/Music"
+            try:
+                os.makedirs(music_dir, exist_ok=True)
+                return music_dir
+            except Exception:
+                pass
+
+        # If /sdcard exists
+        if os.path.isdir("/sdcard"):
+            music_dir = "/sdcard/Music"
+            try:
+                os.makedirs(music_dir, exist_ok=True)
+                return music_dir
+            except Exception:
+                pass
+
+        # Default fallback for Termux
+        return os.path.expanduser("~/storage/shared/Music")
+
+    # Windows / macOS / Linux
+    return os.path.expanduser("~/Music/")
+
+def normalize_download_directory(dir_path):
+    """
+    Normalizes download directory path.
+    Specifically checks if a path is defaulting to Termux's app-specific scoped media directory
+    (e.g., .../storage/shared/Android/media/com.termux) and redirects it to the shared Music folder.
+    """
+    if not dir_path:
+        return get_default_download_directory()
+
+    expanded = os.path.expanduser(os.path.expandvars(dir_path.strip()))
+
+    # If the path points to Termux's scoped app-media directory under storage/shared:
+    # redirect it directly to the shared Music directory
+    if "Android/media/com.termux" in expanded:
+        normalized = re.sub(r'Android/media/com\.termux.*', 'Music', expanded)
+        return normalized
+
+    return expanded
 
 def normalize_youtube_url(url):
     """
@@ -137,6 +267,7 @@ def get_base_ydl_opts(directory, browser_cookie=None, cookie_file=None):
 
 def download_single_song(video_url, video_title, directory, base_ydl_opts):
     """Download a single song into directory thread-safely."""
+    directory = normalize_download_directory(directory)
     safe_title = sanitize_filename(video_title)
     expected_mp3 = os.path.join(directory, f"{safe_title}.mp3")
 
@@ -179,8 +310,12 @@ def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=
     - Liked Videos (list=LL) & Watch Later (list=WL): cookie authentication support with graceful fallback
     - Single video links
     """
+    directory = normalize_download_directory(directory)
     if not os.path.exists(directory):
-        os.makedirs(directory, exist_ok=True)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception as e:
+            print(f"[!] Warning: Could not create directory '{directory}': {e}")
 
     parsed_info = normalize_youtube_url(playlist_url)
     clean_url = parsed_info['clean_url']
@@ -352,9 +487,12 @@ def main():
         print("    pip install -r requirements.txt\n")
         sys.exit(1)
 
+    env = detect_environment()
+    default_dir = get_default_download_directory()
+
     parser = argparse.ArgumentParser(description="Download YouTube Playlists, Mixes (Radio), and Songs as MP3")
     parser.add_argument("urls", nargs="*", help="YouTube URLs to download (playlists, mixes, or songs)")
-    parser.add_argument("-d", "--dir", default=os.path.expanduser("~/Music/"), help="Download directory (default: ~/Music/)")
+    parser.add_argument("-d", "--dir", default=None, help=f"Download directory (default: {default_dir})")
     parser.add_argument("-c", "--concurrent", type=int, default=4, help="Max concurrent downloads (default: 4)")
     parser.add_argument("-b", "--browser", default=None, help="Browser to load YouTube cookies from (e.g. chrome, edge, firefox, brave)")
     parser.add_argument("--cookies", default=None, help="Path to cookies.txt file for private playlists (e.g. Liked Videos 'LL')")
@@ -365,9 +503,13 @@ def main():
     links = args.urls
     browser_cookie = args.browser
     cookie_file = args.cookies
-    download_directory = args.dir
+    download_directory = normalize_download_directory(args.dir) if args.dir else default_dir
     max_concurrent = args.concurrent
     mix_limit = args.mix_limit
+
+    if env['is_termux'] and not os.path.exists(os.path.expanduser("~/storage")):
+        print("[!] Note: Termux detected. If downloads cannot write to shared storage,")
+        print("    run 'termux-setup-storage' in Termux to grant storage permissions.\n")
 
     # Interactive mode if no URLs provided on CLI
     if not links:
@@ -393,6 +535,7 @@ def main():
     print("\nYouTube Links to process:")
     for link in links:
         print(f"- {link}")
+    print(f"Platform: {env['description']}")
     print(f"Download Directory: {download_directory}")
     print(f"Max Concurrent: {max_concurrent}")
     if browser_cookie:

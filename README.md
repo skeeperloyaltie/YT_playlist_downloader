@@ -27,6 +27,14 @@ A fast, multithreaded YouTube playlist and dynamic mix downloader that extracts 
    - **Windows**: `winget install Gyan.FFmpeg`
    - **macOS**: `brew install ffmpeg`
    - **Linux**: `sudo apt install ffmpeg`
+   - **Android / Termux**: `pkg install ffmpeg`
+
+3. **Android / Termux Setup:**
+   Run the following in Termux to enable access to your phone's public shared storage:
+   ```bash
+   termux-setup-storage
+   ```
+   The downloader will automatically detect Termux/Android and route downloads directly to your device's shared **Music** folder (`~/storage/shared/Music/` or `/storage/shared/Music/`) instead of Termux's private sandboxed app-media folders.
 
 ---
 
@@ -59,7 +67,7 @@ python playlistDownloader/main.py "<URL>" --dir "D:/Music" --concurrent 6 --mix-
 
 | Flag | Default | Description |
 |---|---|---|
-| `-d`, `--dir` | `~/Music/` | Directory where audio files are saved |
+| `-d`, `--dir` | Auto (`~/Music/` on PC/Mac, `~/storage/shared/Music` on Android/Termux) | Directory where audio files are saved |
 | `-c`, `--concurrent` | `4` | Number of concurrent downloads |
 | `-b`, `--browser` | `None` | Browser to read YouTube login cookies from (`chrome`, `edge`, `firefox`, `brave`) |
 | `--cookies` | `None` | Path to a `cookies.txt` file |
