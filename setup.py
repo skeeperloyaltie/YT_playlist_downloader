@@ -9,7 +9,12 @@ setup(
     packages=['playlistDownloader'],
     description='Youtube Playlist Downloader',
     install_requires=[
-    'yt_dlp',
-    'pyfiglet'
-    ]
+        'yt-dlp',
+        'pyfiglet'
+    ],
+    entry_points={
+        'console_scripts': [
+            'yt-playlist-dl=playlistDownloader.main:main',
+        ],
+    },
 )

@@ -679,7 +679,7 @@ def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=
 
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                 future_to_title = {
-                    executor.submit(download_single_song, url, title, directory, base_opts): title
+                    executor.submit(download_single_song, url, title, directory, base_opts, ffmpeg_path): title
                     for url, title in download_tasks
                 }
                 for future in as_completed(future_to_title):
@@ -696,6 +696,10 @@ def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=
                     except Exception as e:
                         print(f"\n[!] Error for '{title}': {e}. Skipping...")
                         failed_downloads.append(title)
+
+            # Auto-convert any lingering webm files in directory after download
+            if ffmpeg_path:
+                convert_existing_webm(directory, ffmpeg_path)
 
             if failed_downloads:
                 print("\nFailed to download the following songs:")
@@ -743,13 +747,28 @@ def main():
     parser.add_argument("-b", "--browser", default=None, help="Browser to load YouTube cookies from (e.g. chrome, edge, firefox, brave)")
     parser.add_argument("--cookies", default=None, help="Path to cookies.txt file for private playlists (e.g. Liked Videos 'LL')")
     parser.add_argument("-m", "--mix-limit", type=int, default=50, help="Max songs to download for dynamic YouTube Mixes (default: 50)")
+    parser.add_argument("--convert", "--convert-only", dest="convert_only", action="store_true", help="Convert all existing .webm files in directory to .mp3 and exit")
+    parser.add_argument("--ffmpeg-location", default=None, help="Path to ffmpeg executable or directory")
 
     args = parser.parse_args()
+
+    download_directory = normalize_download_directory(args.dir) if args.dir else default_dir
+    ffmpeg_path, has_ffmpeg = ensure_ffmpeg(args.ffmpeg_location, interactive=True)
+
+    # Handle conversion only mode
+    if args.convert_only:
+        print(f"\nScanning for existing .webm files in: {download_directory}")
+        convert_existing_webm(download_directory, ffmpeg_path)
+        print("Conversion complete. Exiting...")
+        return
+
+    # If existing webm files are found in destination, convert them immediately
+    if has_ffmpeg and os.path.isdir(download_directory):
+        convert_existing_webm(download_directory, ffmpeg_path)
 
     links = args.urls
     browser_cookie = args.browser
     cookie_file = args.cookies
-    download_directory = normalize_download_directory(args.dir) if args.dir else default_dir
     max_concurrent = args.concurrent
     mix_limit = args.mix_limit
 
@@ -783,6 +802,7 @@ def main():
         print(f"- {link}")
     print(f"Platform: {env['description']}")
     print(f"Download Directory: {download_directory}")
+    print(f"FFmpeg Status: {'Enabled (' + ffmpeg_path + ')' if has_ffmpeg else 'Not installed (MP3 conversion disabled)'}")
     print(f"Max Concurrent: {max_concurrent}")
     if browser_cookie:
         print(f"Cookies from browser: {browser_cookie}")
@@ -797,7 +817,8 @@ def main():
             max_concurrent=max_concurrent,
             browser_cookie=browser_cookie,
             cookie_file=cookie_file,
-            max_mix_songs=mix_limit
+            max_mix_songs=mix_limit,
+            ffmpeg_path=ffmpeg_path
         )
 
         if downloaded:
