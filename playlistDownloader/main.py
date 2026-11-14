@@ -729,6 +729,7 @@ def main():
     print("\033[2;32m     do not suck on using the application\033[0m")
     print("\033[2;32m            skeeperloyaltie\033[0m")
     print("\033[1;32m   Mail: skeeperloyaltie@pm.me\033[0m")
+    print("\033[1;33m   M-Pesa Support: 0716642889\033[0m")
     print()
 
     if youtube_dl is None:
