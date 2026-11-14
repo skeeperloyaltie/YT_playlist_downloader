@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/skeeperloyaltie/YT_playlist_downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/skeeperloyaltie/YT_playlist_downloader/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Termux Ready](https://img.shields.io/badge/Termux-Supported-brightgreen.svg)](https://termux.dev/)
 
 A fast, multithreaded YouTube playlist and dynamic mix downloader that extracts high-quality audio and saves tracks directly to your device's music library as MP3s.
