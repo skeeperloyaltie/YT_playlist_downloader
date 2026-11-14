@@ -6,6 +6,7 @@ import shutil
 import urllib.parse
 import argparse
 import platform
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
@@ -160,6 +161,195 @@ def normalize_download_directory(dir_path):
 
     return expanded
 
+def find_ffmpeg(custom_location=None):
+    """
+    Locates the ffmpeg executable across platforms and common install paths.
+    Returns the path to ffmpeg or None if not found.
+    """
+    if custom_location:
+        if os.path.isfile(custom_location):
+            return custom_location
+        candidate = os.path.join(custom_location, "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+        if os.path.isfile(candidate):
+            return candidate
+
+    # 1. Standard PATH
+    which_ffmpeg = shutil.which("ffmpeg")
+    if which_ffmpeg:
+        return which_ffmpeg
+
+    # 2. Termux specific paths
+    termux_paths = [
+        "/data/data/com.termux/files/usr/bin/ffmpeg",
+        os.path.expanduser("~/../usr/bin/ffmpeg"),
+    ]
+    for p in termux_paths:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    # 3. Windows common paths
+    if sys.platform == "win32":
+        win_candidates = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe"),
+            r"C:\ffmpeg\bin\ffmpeg.exe",
+            os.path.expandvars(r"%ProgramFiles%\ffmpeg\bin\ffmpeg.exe"),
+            os.path.expandvars(r"%USERPROFILE%\scoop\shims\ffmpeg.exe"),
+            r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe"),
+            os.path.join(os.getcwd(), "ffmpeg.exe"),
+        ]
+        winget_pkg_dir = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
+        if os.path.isdir(winget_pkg_dir):
+            try:
+                for entry in os.listdir(winget_pkg_dir):
+                    if "ffmpeg" in entry.lower():
+                        nested = os.path.join(winget_pkg_dir, entry)
+                        for root, _, files in os.walk(nested):
+                            if "ffmpeg.exe" in files:
+                                win_candidates.append(os.path.join(root, "ffmpeg.exe"))
+            except Exception:
+                pass
+
+        for p in win_candidates:
+            if os.path.isfile(p):
+                return p
+
+    # 4. Linux / macOS common paths
+    unix_candidates = [
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/opt/ffmpeg/bin/ffmpeg",
+    ]
+    for p in unix_candidates:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    return None
+
+def ensure_ffmpeg(custom_location=None, interactive=True):
+    """
+    Checks if ffmpeg exists. If missing, guides the user and offers auto-install on Termux.
+    Returns (ffmpeg_path, has_ffmpeg).
+    """
+    ffmpeg_path = find_ffmpeg(custom_location)
+    if ffmpeg_path:
+        return ffmpeg_path, True
+
+    env = detect_environment()
+    print("\n" + "=" * 62)
+    print(" [!] FFmpeg is NOT detected on this system!")
+    print("     YouTube natively serves audio in WebM (Opus) or M4A.")
+    print("     FFmpeg is required to convert downloaded audio to MP3.")
+    print("=" * 62)
+
+    if env['is_termux']:
+        print("\n[*] Detected Environment: Termux (Android)")
+        print("    You can install FFmpeg with one command:")
+        print("    --> pkg install ffmpeg -y\n")
+        if interactive and sys.stdin.isatty():
+            try:
+                ans = input("Would you like to install FFmpeg now via 'pkg install ffmpeg'? (y/n) [y]: ").strip().lower()
+                if ans in ('y', 'yes', ''):
+                    print("[*] Running 'pkg install -y ffmpeg'...")
+                    res = subprocess.run(["pkg", "install", "-y", "ffmpeg"])
+                    if res.returncode == 0:
+                        ffmpeg_path = find_ffmpeg()
+                        if ffmpeg_path:
+                            print(f"[✓] FFmpeg successfully installed: {ffmpeg_path}\n")
+                            return ffmpeg_path, True
+                        else:
+                            print("[!] FFmpeg package installed, but binary not found in PATH.\n")
+                    else:
+                        print("[!] 'pkg install ffmpeg' failed. Please run 'pkg install ffmpeg' manually in Termux.\n")
+            except Exception as e:
+                print(f"[!] Could not run automatic install: {e}\n")
+    elif env['system'] == "Windows":
+        print("\n[*] To enable MP3 conversion on Windows, install FFmpeg:")
+        print("    Run in PowerShell/Terminal: winget install Gyan.FFmpeg")
+        print("    Or via Scoop: scoop install ffmpeg\n")
+    elif env['system'] == "Darwin":
+        print("\n[*] To enable MP3 conversion on macOS, install FFmpeg:")
+        print("    Run in Terminal: brew install ffmpeg\n")
+    else:
+        print("\n[*] To enable MP3 conversion on Linux, install FFmpeg:")
+        print("    Run: sudo apt install ffmpeg  (or your distribution's package manager)\n")
+
+    return None, False
+
+def convert_existing_webm(directory, ffmpeg_path=None, remove_source=True):
+    """
+    Finds all .webm files in directory (and subdirectories), converts them to .mp3 using FFmpeg,
+    and removes the original .webm files.
+    """
+    ffmpeg_bin = ffmpeg_path or find_ffmpeg()
+    if not ffmpeg_bin:
+        print("[!] Cannot convert existing .webm files: FFmpeg is not installed.")
+        return []
+
+    directory = normalize_download_directory(directory)
+    if not os.path.isdir(directory):
+        return []
+
+    webm_files = []
+    for root, _, files in os.walk(directory):
+        for f in files:
+            if f.lower().endswith(".webm"):
+                webm_files.append(os.path.join(root, f))
+
+    if not webm_files:
+        return []
+
+    print(f"\n[i] Found {len(webm_files)} existing .webm file(s) in '{directory}'.")
+    print("    Converting to MP3 (192kbps)...")
+
+    converted = []
+    for webm_path in webm_files:
+        base_name, _ = os.path.splitext(webm_path)
+        mp3_path = f"{base_name}.mp3"
+
+        # If MP3 already exists and is non-empty, remove redundant webm
+        if os.path.isfile(mp3_path) and os.path.getsize(mp3_path) > 0:
+            print(f"  [✓] MP3 already exists: '{os.path.basename(mp3_path)}'.")
+            if remove_source:
+                try:
+                    os.remove(webm_path)
+                    print(f"      Removed leftover '{os.path.basename(webm_path)}'.")
+                except Exception as e:
+                    print(f"      Could not remove '{webm_path}': {e}")
+            converted.append(mp3_path)
+            continue
+
+        print(f"  --> Converting: '{os.path.basename(webm_path)}' -> '{os.path.basename(mp3_path)}'...")
+        cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i", webm_path,
+            "-vn",
+            "-ar", "44100",
+            "-ac", "2",
+            "-b:a", "192k",
+            mp3_path
+        ]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if res.returncode == 0 and os.path.isfile(mp3_path) and os.path.getsize(mp3_path) > 0:
+                print(f"  [✓] Converted successfully: '{os.path.basename(mp3_path)}'")
+                if remove_source:
+                    try:
+                        os.remove(webm_path)
+                    except Exception:
+                        pass
+                converted.append(mp3_path)
+            else:
+                err_msg = res.stderr.strip().splitlines()[-1] if res.stderr else "Unknown error"
+                print(f"  [!] Conversion failed for '{os.path.basename(webm_path)}': {err_msg}")
+        except Exception as e:
+            print(f"  [!] Exception during conversion of '{webm_path}': {e}")
+
+    print(f"[✓] Converted {len(converted)}/{len(webm_files)} file(s) to MP3.\n")
+    return converted
+
 def normalize_youtube_url(url):
     """
     Normalizes YouTube URLs for proper playlist and mix handling:
@@ -230,9 +420,9 @@ def normalize_youtube_url(url):
         'is_private': False
     }
 
-def get_base_ydl_opts(directory, browser_cookie=None, cookie_file=None):
+def get_base_ydl_opts(directory, browser_cookie=None, cookie_file=None, ffmpeg_path=None):
     """Configures yt-dlp download options with FFmpeg detection and cookie support."""
-    has_ffmpeg = bool(shutil.which('ffmpeg'))
+    has_ffmpeg = bool(ffmpeg_path)
 
     opts = {
         'ignoreerrors': True,
@@ -247,6 +437,7 @@ def get_base_ydl_opts(directory, browser_cookie=None, cookie_file=None):
     }
 
     if has_ffmpeg:
+        opts['ffmpeg_location'] = ffmpeg_path
         opts['format'] = 'bestaudio/best'
         opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -265,16 +456,41 @@ def get_base_ydl_opts(directory, browser_cookie=None, cookie_file=None):
 
     return opts, has_ffmpeg
 
-def download_single_song(video_url, video_title, directory, base_ydl_opts):
+def download_single_song(video_url, video_title, directory, base_ydl_opts, ffmpeg_path=None):
     """Download a single song into directory thread-safely."""
     directory = normalize_download_directory(directory)
     safe_title = sanitize_filename(video_title)
     expected_mp3 = os.path.join(directory, f"{safe_title}.mp3")
+    expected_webm = os.path.join(directory, f"{safe_title}.webm")
 
-    # Fast skip if file already exists locally
-    if os.path.isfile(expected_mp3):
+    # Fast skip if MP3 already exists locally
+    if os.path.isfile(expected_mp3) and os.path.getsize(expected_mp3) > 0:
+        if os.path.isfile(expected_webm):
+            try:
+                os.remove(expected_webm)
+            except Exception:
+                pass
         print(f"Skipping (already exists): {safe_title}.mp3")
         return f"{safe_title}.mp3"
+
+    # If WebM exists from previous download and we have ffmpeg, convert it directly
+    if os.path.isfile(expected_webm) and os.path.getsize(expected_webm) > 0 and ffmpeg_path:
+        print(f"Found existing WebM for '{video_title}'. Converting directly to MP3...")
+        cmd = [
+            ffmpeg_path, "-y", "-i", expected_webm,
+            "-vn", "-ar", "44100", "-ac", "2", "-b:a", "192k", expected_mp3
+        ]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if res.returncode == 0 and os.path.isfile(expected_mp3) and os.path.getsize(expected_mp3) > 0:
+                try:
+                    os.remove(expected_webm)
+                except Exception:
+                    pass
+                print(f"Successfully converted: {safe_title}.mp3")
+                return f"{safe_title}.mp3"
+        except Exception:
+            pass
 
     single_opts = base_ydl_opts.copy()
     single_opts.update({
@@ -290,6 +506,32 @@ def download_single_song(video_url, video_title, directory, base_ydl_opts):
             if error_code != 0:
                 print(f"Download returned code {error_code} for '{video_title}'.")
                 return None
+
+        # Verify outcome: ensure MP3 is produced and leftover WebM is cleaned up
+        if os.path.isfile(expected_mp3):
+            if os.path.isfile(expected_webm):
+                try:
+                    os.remove(expected_webm)
+                except Exception:
+                    pass
+            return f"{safe_title}.mp3"
+        elif os.path.isfile(expected_webm):
+            # If yt-dlp downloaded raw webm, convert it using ffmpeg if available
+            if ffmpeg_path:
+                print(f"Converting downloaded WebM to MP3: {safe_title}...")
+                cmd = [
+                    ffmpeg_path, "-y", "-i", expected_webm,
+                    "-vn", "-ar", "44100", "-ac", "2", "-b:a", "192k", expected_mp3
+                ]
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if res.returncode == 0 and os.path.isfile(expected_mp3):
+                    try:
+                        os.remove(expected_webm)
+                    except Exception:
+                        pass
+                    return f"{safe_title}.mp3"
+            return f"{safe_title}.webm"
+
         return f"{safe_title}.mp3"
     except youtube_dl.utils.DownloadError as e:
         err = str(e)
@@ -301,7 +543,7 @@ def download_single_song(video_url, video_title, directory, base_ydl_opts):
         print(f"Unexpected error for '{video_title}': {str(e)}. Skipping...")
         return None
 
-def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=None, cookie_file=None, max_mix_songs=50):
+def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=None, cookie_file=None, max_mix_songs=50, ffmpeg_path=None):
     """
     Downloads all songs from a YouTube Playlist or YouTube Mix (both saved and unsaved).
     Supports:
@@ -317,6 +559,10 @@ def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=
         except Exception as e:
             print(f"[!] Warning: Could not create directory '{directory}': {e}")
 
+    # Automatically convert any existing WebM files sitting in the destination directory
+    if ffmpeg_path:
+        convert_existing_webm(directory, ffmpeg_path)
+
     parsed_info = normalize_youtube_url(playlist_url)
     clean_url = parsed_info['clean_url']
     url_type = parsed_info['type']
@@ -324,12 +570,12 @@ def download_playlist(playlist_url, directory, max_concurrent=4, browser_cookie=
     video_id = parsed_info['video_id']
     is_private = parsed_info['is_private']
 
-    base_opts, has_ffmpeg = get_base_ydl_opts(directory, browser_cookie, cookie_file)
+    base_opts, has_ffmpeg = get_base_ydl_opts(directory, browser_cookie, cookie_file, ffmpeg_path)
 
     if not has_ffmpeg:
         print("[!] Notice: FFmpeg is not installed or not in PATH.")
         print("    Audio will be saved in best native format (.m4a/.webm) without MP3 conversion.")
-        print("    To get MP3s, install ffmpeg (e.g. `winget install Gyan.FFmpeg`).\n")
+        print("    To get MP3s, install ffmpeg (e.g. `winget install Gyan.FFmpeg` or `pkg install ffmpeg`).\n")
 
     # Options for fast playlist/mix metadata extraction
     extract_opts = base_opts.copy()
