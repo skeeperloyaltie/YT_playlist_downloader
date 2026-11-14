@@ -1,5 +1,8 @@
 # GitHub Sponsors & Funding configuration
+# Appears under the "Sponsor this project" heart button on GitHub
+
+buy_me_a_coffee: skeeper
 
 custom:
-  - "https://www.buymeacoffee.com/skeeper"
-  - "M-Pesa: 0716642889 (Kenya / Worldwide M-Pesa Global)"
+  - "https://github.com/skeeperloyaltie/YT_playlist_downloader#coffee-support--donations-m-pesa"
+  - "https://wa.me/254716642889?text=Hi%20Skeeper,%20I%20would%20like%20to%20support%20YT%20Playlist%20Downloader"
